@@ -5,6 +5,9 @@ use crate::*;
 
 pub trait Material {
     fn scatter(&self, ray: &Ray, hit: &RayHit) -> Option<(Color, Ray)>;
+    fn emit(&self, ray: &Ray, hit: &RayHit) -> Color {
+        Color::black()
+    }
 }
 
 pub struct Lambert {
@@ -82,5 +85,19 @@ impl Material for Glass {
         };
 
         Some((Color::white(), Ray::new(hit.point, scattered)))
+    }
+}
+
+pub struct DiffuseLight {
+    pub col: Color,
+}
+
+impl Material for DiffuseLight {
+    fn scatter(&self, ray: &Ray, hit: &RayHit) -> Option<(Color, Ray)> {
+        None
+    }
+
+    fn emit(&self, ray: &Ray, hit: &RayHit) -> Color {
+        self.col
     }
 }

@@ -1,16 +1,19 @@
 use anyhow::{anyhow, Result};
-use material::{Glass, Lambert, Material, Metal};
-use object::RayHit;
+use material::{DiffuseLight, Glass, Lambert, Material, Metal};
+use object::{ObjectGroup, RayHit};
 use rayon::prelude::*;
 use vec3::Point3;
 
-use std::{fs::File, sync::Arc};
+use std::{fs::File, rc::Rc, sync::Arc};
 use std::{io::Write, sync::atomic::AtomicI64};
 
 mod material;
 mod object;
 mod ray;
+
+#[macro_use]
 mod vec3;
+mod bounding_box;
 
 use crate::object::{Object, Sphere};
 use crate::ray::Ray;
@@ -191,12 +194,15 @@ impl Scene {
             point: Vec3::empty(),
             normal: Vec3::empty(),
             front_face: true,
+            mat: Arc::new(Lambert {
+                albedo: Color::of_rgb(0.5, 0.5, 0.5),
+            }),
         };
 
-        let (closest_hit, hit_obj) = self.objects.iter().fold((infinity_hit, None), |acc, obj| {
+        let closest_hit = self.objects.iter().fold(infinity_hit, |acc, obj| {
             if let Some(hit) = obj.hit(&ray) {
-                if hit.t < acc.0.t {
-                    return (hit, Some(obj));
+                if hit.t < acc.t {
+                    return hit;
                 }
             }
             acc
@@ -206,12 +212,15 @@ impl Scene {
             return closest_hit.col;
         }
 
-        let mat = hit_obj.unwrap().material();
+
+        let mat = closest_hit.mat.clone();
+        let emitted = mat.emit(ray, &closest_hit);
+
         if let Some((attenuation, bounce)) = mat.scatter(ray, &closest_hit) {
             self.color_of_ray(&bounce, max_depth - 1, infinity_color)
                 .mult_(&attenuation)
         } else {
-            Color::black()
+            emitted
         }
     }
 }
@@ -226,27 +235,33 @@ fn main() {
         vec3!(-15., 20., 4.),
         4.,
         Color::of_rgb(1., 0., 1.),
-        Box::new(Metal {
-            albedo: Color::of_rgb(0.9, 0.1, 0.1),
-            fuzz: 1.,
-        }),
+        Arc::new(
+
+            DiffuseLight {
+            col: Color::of_rgb(0.3, 0.9, 0.3),
+            }
+
+        ),
     )));
 
     objects.push(Box::new(Sphere::new(
         vec3!(-43., 30., 4.),
         4.,
         Color::of_rgb(1., 0., 1.),
-        Box::new(Metal {
-            albedo: Color::of_rgb(0.1, 0.9, 0.1),
-            fuzz: 0.2,
-        }),
+        Arc::new(
+
+            DiffuseLight {
+            col: Color::of_rgb(0.3, 0.3, 0.9),
+            }
+
+        ),
     )));
 
     objects.push(Box::new(Sphere::new(
         vec3!(-10., 35., 4.),
         4.,
         Color::of_rgb(1., 0., 1.),
-        Box::new(Metal {
+        Arc::new(Metal {
             albedo: Color::of_rgb(0.1, 0.1, 0.9),
             fuzz: 0.05,
         }),
@@ -256,7 +271,7 @@ fn main() {
         vec3!(0., 15., 4.),
         4.,
         Color::of_rgb(0., 1., 0.),
-        Box::new(Glass {
+        Arc::new(Glass {
             refraction_index: 1.5,
         }),
     )));
@@ -265,7 +280,7 @@ fn main() {
         vec3!(10., 10., 4.),
         4.,
         Color::of_rgb(0., 1., 1.),
-        Box::new(Metal {
+        Arc::new(Metal {
             albedo: Color::of_rgb(0.8, 0.8, 0.8),
             fuzz: 0.,
         }),
@@ -277,7 +292,8 @@ fn main() {
         vec3!(0., 0., -100000.),
         100000.,
         Color::of_rgb(0.5, 0.5, 0.5),
-        Box::new(Lambert {
+        Arc::new(
+            Lambert {
             albedo: Color::of_rgb(0.5, 0.5, 0.5),
         }),
     )));
@@ -285,33 +301,36 @@ fn main() {
     for i in 0..300 {
         let mut rng = rand::thread_rng();
 
-        let rand_material: Box<dyn Material> = {
-            let s = rng.gen_range(0..6);
+        let rand_material: Arc<dyn Material> = {
+            let s = rng.gen_range(0..8);
 
-            let r = rng.gen_range(0.0..1.);
-            let g = rng.gen_range(0.0..1.);
-            let b = rng.gen_range(0.0..1.);
+            let r = rng.gen_range(0.5..1.);
+            let g = rng.gen_range(0.5..1.);
+            let b = rng.gen_range(0.5..1.);
 
             match s {
-                0 | 1 => Box::new(Metal {
+                0 | 1 => Arc::new(Metal {
                     albedo: Color::of_rgb(r, g, b),
                     fuzz: rng.gen_range(0.0..1.),
                 }),
-                2 | 3 => Box::new(Lambert {
+                2 | 3 => Arc::new(Lambert {
                     albedo: Color::of_rgb(r, g, b),
                 }),
-                4 => Box::new(Glass {
+                4 => Arc::new(Glass {
                     refraction_index: 1.5,
                 }),
-                _ => Box::new(Metal {
+                5 | 6 => Arc::new(DiffuseLight {
+                    col: Color::of_rgb(r,g,b),
+                }),
+                _ => Arc::new(Metal {
                     albedo: Color::of_rgb(1.0, 1.0, 1.0),
                     fuzz: 0.,
                 }),
             }
         };
 
-        let x = 2. * rng.gen_range(-20..20) as f64;
-        let y = 2. * rng.gen_range(-20..40) as f64;
+        let x = 3. * rng.gen_range(-20..20) as f64;
+        let y = 3. * rng.gen_range(-20..40) as f64;
         let r = 1.; // rng.gen_range(0.0..1.);
 
         objects.push(Box::new(Sphere::new(
@@ -321,6 +340,8 @@ fn main() {
             rand_material,
         )));
     }
+
+    let objects : Vec<Box<dyn Object>> = vec![Box::new(ObjectGroup::create_hierarchy(objects))];
 
     let mut img = Image::new(viewport_width, viewport_height);
     let cam = Camera::new(
@@ -334,7 +355,7 @@ fn main() {
 
     let scene = Arc::from(Scene { cam, objects });
 
-    let SAMPLES: i32 = 250;
+    let SAMPLES: i32 = 100;
 
     let lines_complete = AtomicI64::new(0);
 
@@ -348,8 +369,9 @@ fn main() {
                         let b: f64 = ((y as f64 / viewport_height as f64) + 0.4).min(1.);
 
                         let ray = cam.cast_ray(x as i32, y as i32);
+                        let sky = Color::of_rgb(0.4, 0.4, b);
                         color =
-                            color.add(&scene.color_of_ray(&ray, 500, Color::of_rgb(0.4, 0.4, b)));
+                            color.add(&scene.color_of_ray(&ray, 50, Color::black()));
                     }
 
                     color = color.mult(1. / SAMPLES as f64);
@@ -358,10 +380,9 @@ fn main() {
                     (x, y, color)
                 })
                 .collect::<Vec<_>>();
-            let lines_complete =
-                lines_complete.fetch_add(1, std::sync::atomic::Ordering::SeqCst) as f64;
+            let lines_complete = lines_complete.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if lines_complete % 50 == 0 {
-                let progress = (lines_complete / viewport_height as f64) * 100.;
+                let progress = (lines_complete as f64 / viewport_height as f64) * 100.;
                 eprintln!("{:?}%", progress);
             }
             line
