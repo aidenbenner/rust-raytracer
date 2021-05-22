@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Index, Mul, Neg, Sub};
+use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 
 use rand::{
     self,
@@ -223,6 +223,12 @@ impl Index<usize> for Vec3 {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.a[index]
+    }
+}
+
+impl IndexMut<usize> for Vec3 {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.a[index]
     }
 }
 

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use material::{DiffuseLight, Glass, Lambert, Material, Metal};
-use object::{ObjectGroup, RayHit};
+use object::{Axis, FlipFace, ObjectGroup, RayHit, Rect};
 use rayon::prelude::*;
 use vec3::Point3;
 
@@ -178,7 +178,7 @@ impl Camera {
     }
 }
 
-struct Scene {
+pub struct Scene {
     cam: Camera,
     objects: Vec<Box<Object>>,
 }
@@ -225,18 +225,14 @@ impl Scene {
     }
 }
 
-fn main() {
-    const viewport_width: usize = 1280;
-    const viewport_height: usize = 720;
 
+pub fn plane_scene() -> Vec<Box<dyn Object>> {
     let mut objects: Vec<Box<dyn Object>> = Vec::new();
-
     objects.push(Box::new(Sphere::new(
         vec3!(-15., 20., 4.),
         4.,
         Color::of_rgb(1., 0., 1.),
         Arc::new(
-
             DiffuseLight {
             col: Color::of_rgb(0.3, 0.9, 0.3),
             }
@@ -341,37 +337,168 @@ fn main() {
         )));
     }
 
-    let objects : Vec<Box<dyn Object>> = vec![Box::new(ObjectGroup::create_hierarchy(objects))];
+    objects
+}
+const VIEWPORT_WIDTH: usize = 852;//1280;
+const VIEWPORT_HEIGHT: usize = 480; //720;
 
-    let mut img = Image::new(viewport_width, viewport_height);
+pub fn cornell_box() -> Arc<Scene> {
+    let mut objects: Vec<Box<dyn Object>> = Vec::new();
+    let mut focus_point = vec3!(0., 2., 1.);
     let cam = Camera::new(
-        vec3!(10., -2., 5.),
+        vec3!(0., -12., 3.),
         focus_point,
-        vec3!(0., 0., 5.),
-        viewport_width,
-        viewport_height,
-        95.,
+        vec3!(0., 0., 2.),
+        VIEWPORT_WIDTH,
+        VIEWPORT_HEIGHT,
+        50.,
     );
 
+    /*
+    objects.push(Box::new(Rect {
+        p0: (0., 100.),
+        p1: (0., 100.),
+        k: 5.,
+        axis: Axis::XZ,
+        mat: Arc::new(Lambert {
+            albedo: Color::of_rgb(1., 0.4, 0.4),
+        }),
+    }));*/
+
+    // floor
+    objects.push(Box::new(Rect {
+        p0: (-5., 5.),
+        p1: (-5., 5.),
+        k: 0.,
+        axis: Axis::XY,
+        mat: Arc::new(Lambert {
+            albedo: Color::of_rgb(0.4, 0.4, 0.4),
+        }),
+    }));
+
+
+    objects.push(Box::new(Rect {
+        p0: (-5., 5.),
+        p1: (-5., 5.),
+        k: 4.,
+        axis: Axis::XY,
+        mat: Arc::new(Lambert {
+            albedo: Color::of_rgb(0.4, 0.4, 0.4),
+        }),
+    }));
+
+    objects.push(Box::new(FlipFace {
+        obj:
+        Arc::new(Rect {
+        p0: (-1.5, 1.5),
+        p1: (0., 2.),
+        k: 3.9,
+        axis: Axis::XY,
+        mat: Arc::new(DiffuseLight {
+            col: Color::of_rgb(4., 4., 4.),
+        }),
+        })
+    }));
+
+    // back wall
+    objects.push(Box::new(Rect {
+        p0: (-100., 100.),
+        p1: (-100., 100.),
+        k: 5.,
+        axis: Axis::XZ,
+        mat: Arc::new(Lambert {
+            albedo: Color::of_rgb(1., 0., 0.),
+        }),
+    }));
+
+    objects.push(Box::new(Rect {
+        p0: (-100., 100.),
+        p1: (-100., 100.),
+        k: -14.,
+        axis: Axis::XZ,
+        mat: Arc::new(Lambert {
+            albedo: Color::black(),
+        }),
+    }));
+
+
+    objects.push(Box::new(Rect {
+        p0: (-100., 100.),
+        p1: (-100., 100.),
+        k: -3.,
+        axis: Axis::YZ,
+        mat: Arc::new(Lambert {
+            albedo: Color::of_rgb(0., 1., 0.),
+        }),
+    }));
+
+    objects.push(Box::new(Rect {
+        p0: (-100., 100.),
+        p1: (-100., 100.),
+        k: 3.,
+        axis: Axis::YZ,
+        mat: Arc::new(Lambert {
+            albedo: Color::of_rgb(0., 0., 1.),
+        }),
+    }));
+
+    objects.push(Box::new(Sphere::new(
+        vec3!(-1.5, 1., 1.),
+        1.,
+        Color::of_rgb(0.5, 0.5, 0.5),
+        Arc::new(Metal {
+            albedo: Color::of_rgb(0.9, 0.9, 0.9),
+            fuzz: 0.,
+        }),
+    )));
+
+    objects.push(Box::new(Sphere::new(
+        vec3!(1.5, 1., 1.),
+        1.,
+        Color::of_rgb(0.5, 0.5, 0.5),
+        Arc::new(Glass {
+                    refraction_index: 1.52,
+                }),
+    )));
+
+    objects.push(Box::new(Sphere::new(
+        vec3!(0., -1., 0.5),
+        0.5,
+        Color::of_rgb(0.5, 0.5, 0.5),
+        Arc::new(Metal {
+            albedo: Color::of_rgb(0.9, 0.0, 0.9),
+            fuzz: 1.,
+        }),
+    )));
+
+
+    let objects : Vec<Box<dyn Object>> = vec![Box::new(ObjectGroup::create_hierarchy(objects))];
     let scene = Arc::from(Scene { cam, objects });
+    scene
+}
+
+fn main() {
+
+    let mut img = Image::new(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    let scene = cornell_box();
 
     let SAMPLES: i32 = 100;
 
     let lines_complete = AtomicI64::new(0);
 
-    let color_for_pixels = (0..viewport_height)
+    let color_for_pixels = (0..VIEWPORT_HEIGHT)
         .into_par_iter()
         .flat_map(|y| {
-            let line = (0..viewport_width)
+            let line = (0..VIEWPORT_WIDTH)
                 .map(|x| {
                     let mut color = Color::black();
                     for _ in 0..SAMPLES {
-                        let b: f64 = ((y as f64 / viewport_height as f64) + 0.4).min(1.);
+                        let b: f64 = ((y as f64 / VIEWPORT_HEIGHT as f64) + 0.4).min(1.);
 
-                        let ray = cam.cast_ray(x as i32, y as i32);
+                        let ray = scene.cam.cast_ray(x as i32, y as i32);
                         let sky = Color::of_rgb(0.4, 0.4, b);
                         color =
-                            color.add(&scene.color_of_ray(&ray, 50, Color::black()));
+                            color.add(&scene.color_of_ray(&ray, 4, sky));
                     }
 
                     color = color.mult(1. / SAMPLES as f64);
@@ -382,7 +509,7 @@ fn main() {
                 .collect::<Vec<_>>();
             let lines_complete = lines_complete.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if lines_complete % 50 == 0 {
-                let progress = (lines_complete as f64 / viewport_height as f64) * 100.;
+                let progress = (lines_complete as f64 / VIEWPORT_HEIGHT as f64) * 100.;
                 eprintln!("{:?}%", progress);
             }
             line

@@ -204,3 +204,109 @@ impl Object for Sphere {
         ))
     }
 }
+
+pub enum Axis {
+    XY,
+    XZ,
+    YZ,
+}
+
+pub struct FlipFace {
+    pub obj : Arc<dyn Object>,
+}
+
+impl Object for FlipFace {
+    fn hit(&self, ray: &Ray) -> Option<RayHit> {
+        let hit = self.obj.hit(ray)?;
+        if hit.front_face {
+            return Some(hit);
+        }
+        None
+    }
+
+    fn bounding_box(&self) -> Option<AABB> {
+        self.obj.bounding_box()
+    }
+}
+
+pub struct Rect {
+    pub p0 : (f64, f64),
+    pub p1 : (f64, f64),
+    pub k : f64,
+    pub axis : Axis,
+    pub mat : Arc<dyn Material>,
+}
+
+
+impl Rect {
+    pub fn new(p0: (f64, f64), p1: (f64, f64), k: f64, axis: Axis, mat: Arc<dyn Material>) -> Self { Self { p0, p1, k, axis, mat } }
+
+    fn axis(&self) -> (usize, usize, usize) {
+        match self.axis {
+            Axis::XY => {
+                // z, x, y
+                (2, 0, 1)
+            }
+            Axis::XZ => {
+                // y, x, z
+                (1, 0, 2)
+            }
+            Axis::YZ => {
+                // x, y, z
+                (0, 1, 2)
+            }
+        }
+    }
+}
+
+unsafe impl Send for Rect {}
+unsafe impl Sync for Rect {}
+
+impl Object for Rect {
+
+    fn hit(&self, ray: &Ray) -> Option<RayHit> {
+        let (perp, a0, a1)  = self.axis();
+        // t at intersection of the plane
+        let t = (self.k - ray.origin[perp]) / ray.dir[perp];
+        if t < T_MIN || t > T_MAX {
+            return None;
+        }
+
+
+        const EPS : f64 = 0.0001;
+        let hit_0 = ray.origin[a0] + t * ray.dir[a0];
+        let hit_1 = ray.origin[a1] + t * ray.dir[a1];
+
+        if hit_0 - EPS < self.p0.0 || hit_0 + EPS > self.p0.1 || hit_1 - EPS < self.p1.0  || hit_1 + EPS > self.p1.1 {
+            return None;
+        }
+
+        let mut normal = Vec3::empty();
+        normal[perp] = 1.;
+
+        let (normal, front_face) = if normal.dot(&ray.dir) > 0. {
+            (-normal, true)
+        } else {
+            (normal, false)
+        };
+
+        let point = ray.cast(t);
+
+        Some(RayHit { col: Color::of_rgb(1.,0.,0.), point, t, normal, front_face, mat: self.mat.clone()})
+    }
+
+    fn bounding_box(&self) -> Option<AABB> {
+        let (perp, a0, a1)  = self.axis();
+        let mut small = Vec3::empty();
+        small[perp] = self.k - 0.0001;
+        small[a0] = self.p0.0 - 0.001;
+        small[a1] = self.p1.0 - 0.001;
+
+        let mut big = Vec3::empty();
+        big[perp] = self.k + 0.0001;
+        big[a0] = self.p0.1 + 0.001;
+        big[a1] = self.p1.1 + 0.001;
+
+        Some(AABB::new(small, big))
+    }
+}
