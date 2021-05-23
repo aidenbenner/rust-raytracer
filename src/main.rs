@@ -59,7 +59,7 @@ impl Color {
     const MAX_VAL: i32 = 255;
 
     pub fn to_int_rgb(&self) -> (i32, i32, i32) {
-        let norm = |c: f64| (c * Self::MAX_VAL as f64).round() as i32;
+        let norm = |c: f64| ((c * Self::MAX_VAL as f64).round() as i32).min(Self::MAX_VAL);
 
         (norm(self.r), norm(self.g), norm(self.b))
     }
@@ -146,7 +146,8 @@ impl Camera {
     pub fn cast_ray(&self, x: i32, y: i32) -> Ray {
         // distance in front of the camera of the projection plane
         //
-        let lense_radius = 0.2;
+        // let lense_radius = 0.2;
+        let lense_radius = 0.001;
 
         let focus_point = self.origin + self.look_dir * self.focus_dist;
 
@@ -245,11 +246,9 @@ pub fn plane_scene() -> Vec<Box<dyn Object>> {
         4.,
         Color::of_rgb(1., 0., 1.),
         Arc::new(
-
             DiffuseLight {
             col: Color::of_rgb(0.3, 0.3, 0.9),
             }
-
         ),
     )));
 
@@ -366,81 +365,83 @@ pub fn cornell_box() -> Arc<Scene> {
     }));*/
 
     // floor
-    objects.push(Box::new(Rect {
-        p0: (-5., 5.),
-        p1: (-5., 5.),
-        k: 0.,
-        axis: Axis::XY,
-        mat: Arc::new(Lambert {
+    objects.push(Box::new(Rect::new (
+         (-5., 5.),
+         (-5., 5.),
+         0.,
+         Axis::XY,
+         Arc::new(Lambert {
             albedo: Color::of_rgb(0.4, 0.4, 0.4),
         }),
-    }));
+    )));
 
 
-    objects.push(Box::new(Rect {
-        p0: (-5., 5.),
-        p1: (-5., 5.),
-        k: 4.,
-        axis: Axis::XY,
-        mat: Arc::new(Lambert {
+    objects.push(Box::new(Rect::new(
+         (-5., 5.),
+         (-5., 5.),
+         4.,
+        Axis::XY,
+        Arc::new(Lambert {
             albedo: Color::of_rgb(0.4, 0.4, 0.4),
-        }),
-    }));
+        })),
+    ));
+
 
     objects.push(Box::new(FlipFace {
         obj:
-        Arc::new(Rect {
-        p0: (-1.5, 1.5),
-        p1: (0., 2.),
-        k: 3.9,
-        axis: Axis::XY,
-        mat: Arc::new(DiffuseLight {
+        Arc::new(
+        Rect::new(
+        (-1.5, 1.5),
+        (0., 2.),
+        3.9,
+        Axis::XY,
+        Arc::new(DiffuseLight {
             col: Color::of_rgb(4., 4., 4.),
         }),
-        })
+        ))
     }));
 
     // back wall
-    objects.push(Box::new(Rect {
-        p0: (-100., 100.),
-        p1: (-100., 100.),
-        k: 5.,
-        axis: Axis::XZ,
-        mat: Arc::new(Lambert {
+    objects.push(Box::new(Rect::new(
+        (-100., 100.),
+        (-100., 100.),
+        5.,
+        Axis::XZ,
+        Arc::new(Lambert {
             albedo: Color::of_rgb(1., 0., 0.),
         }),
-    }));
+    )));
 
-    objects.push(Box::new(Rect {
-        p0: (-100., 100.),
-        p1: (-100., 100.),
-        k: -14.,
-        axis: Axis::XZ,
-        mat: Arc::new(Lambert {
-            albedo: Color::black(),
+    objects.push(Box::new(Rect::new(
+         (-100., 100.),
+         (-100., 100.),
+         -14.,
+         Axis::XZ,
+         Arc::new(DiffuseLight {
+            col: Color::black(),
         }),
-    }));
+    )));
 
 
-    objects.push(Box::new(Rect {
-        p0: (-100., 100.),
-        p1: (-100., 100.),
-        k: -3.,
-        axis: Axis::YZ,
-        mat: Arc::new(Lambert {
+    objects.push(Box::new(Rect::new(
+         (-100., 100.),
+         (-100., 100.),
+         -3.,
+         Axis::YZ,
+         Arc::new(Lambert {
             albedo: Color::of_rgb(0., 1., 0.),
         }),
-    }));
+    )));
 
-    objects.push(Box::new(Rect {
-        p0: (-100., 100.),
-        p1: (-100., 100.),
-        k: 3.,
-        axis: Axis::YZ,
-        mat: Arc::new(Lambert {
+    objects.push(Box::new(Rect::new(
+         (-100., 100.),
+         (-100., 100.),
+         3.,
+         Axis::YZ,
+         Arc::new(Lambert {
             albedo: Color::of_rgb(0., 0., 1.),
         }),
-    }));
+    )));
 
     objects.push(Box::new(Sphere::new(
         vec3!(-1.5, 1., 1.),
@@ -466,10 +467,39 @@ pub fn cornell_box() -> Arc<Scene> {
         0.5,
         Color::of_rgb(0.5, 0.5, 0.5),
         Arc::new(Metal {
-            albedo: Color::of_rgb(0.9, 0.0, 0.9),
-            fuzz: 1.,
+            albedo: Color::of_rgb(0.9, 0.9, 0.9),
+            fuzz: 0.8,
         }),
     )));
+
+    /*
+    objects.push(Box::new(Sphere::new(
+        vec3!(-1.5, -3.5, 0.25),
+        0.25,
+        Color::of_rgb(0.5, 0.5, 0.5),
+        Arc::new(DiffuseLight {
+            col: Color::of_rgb(0.5, 0.5, 4.),
+        })
+    )));
+
+    objects.push(Box::new(Sphere::new(
+        vec3!(1.5, -3.5, 0.25),
+        0.25,
+        Color::of_rgb(0.5, 0.5, 0.5),
+        Arc::new(DiffuseLight {
+            col: Color::of_rgb(0.5, 4., 0.5),
+        })
+    )));
+
+    objects.push(Box::new(Sphere::new(
+        vec3!(0., -3.5, 0.25),
+        0.25,
+        Color::of_rgb(0.5, 0.5, 0.5),
+        Arc::new(DiffuseLight {
+            col: Color::of_rgb(4., 0.5, 0.5),
+        })
+    )));
+    */
 
 
     let objects : Vec<Box<dyn Object>> = vec![Box::new(ObjectGroup::create_hierarchy(objects))];
@@ -482,7 +512,7 @@ fn main() {
     let mut img = Image::new(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
     let scene = cornell_box();
 
-    let SAMPLES: i32 = 100;
+    let SAMPLES: i32 = 5000;
 
     let lines_complete = AtomicI64::new(0);
 
@@ -498,7 +528,7 @@ fn main() {
                         let ray = scene.cam.cast_ray(x as i32, y as i32);
                         let sky = Color::of_rgb(0.4, 0.4, b);
                         color =
-                            color.add(&scene.color_of_ray(&ray, 4, sky));
+                            color.add(&scene.color_of_ray(&ray, 10, sky));
                     }
 
                     color = color.mult(1. / SAMPLES as f64);

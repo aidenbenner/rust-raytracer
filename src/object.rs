@@ -99,13 +99,7 @@ impl Object for ObjectGroup {
 
 
     fn bounding_box(&self) -> Option<AABB> {
-        self.objs.iter().map(|x| x.bounding_box())
-                        .reduce(|a , b| {
-                            let a = a?;
-                            b.map(|b| {
-                                a.combine(&b)
-                            })
-                        })?
+        Some(self.bb)
     }
 }
 
@@ -140,26 +134,26 @@ impl Object for Sphere {
             return None;
         }
 
-        let origin = ray.origin;
-        let dir = ray.dir;
-        let center = self.center;
+        let origin = &ray.origin;
+        let dir = &ray.dir;
+        let center = &self.center;
         // https://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
 
-        let a = dir.mag_squared();
-        let diff = origin - center;
+        let diff = *origin - *center;
         let b = dir.dot(&diff) * 2.;
         let r_squared = self.r * self.r;
         let c = diff.mag_squared() - r_squared;
 
         // TODO can simplify
-        let delta = b * b - a * c * 4.;
+        let delta = b * b - c * 4.;
 
         if delta < 0. {
             return None;
         }
 
-        let t1 = (-b - delta.sqrt()) / (2.0 * a);
-        let t2 = (-b + delta.sqrt()) / (2.0 * a);
+        let delta_sqrt = delta.sqrt();
+        let t1 = (-b - delta_sqrt) / (2.0);
+        let t2 = (-b + delta_sqrt) / (2.0);
 
         let valid_t = |t: f64| -> bool { T_MIN <= t && t <= T_MAX };
 
@@ -233,16 +227,24 @@ pub struct Rect {
     pub p0 : (f64, f64),
     pub p1 : (f64, f64),
     pub k : f64,
+
+    perp : usize,
+    a0 : usize,
+    a1 : usize,
+
     pub axis : Axis,
     pub mat : Arc<dyn Material>,
 }
 
 
 impl Rect {
-    pub fn new(p0: (f64, f64), p1: (f64, f64), k: f64, axis: Axis, mat: Arc<dyn Material>) -> Self { Self { p0, p1, k, axis, mat } }
+    pub fn new(p0: (f64, f64), p1: (f64, f64), k: f64, axis: Axis, mat: Arc<dyn Material>) -> Self {
+        let (perp, a0, a1) = Self::axis(&axis);
+        Self { p0, p1, k, axis, mat, perp, a0, a1 }
+    }
 
-    fn axis(&self) -> (usize, usize, usize) {
-        match self.axis {
+    fn axis(axis : &Axis) -> (usize, usize, usize) {
+        match axis {
             Axis::XY => {
                 // z, x, y
                 (2, 0, 1)
@@ -265,7 +267,7 @@ unsafe impl Sync for Rect {}
 impl Object for Rect {
 
     fn hit(&self, ray: &Ray) -> Option<RayHit> {
-        let (perp, a0, a1)  = self.axis();
+        let (perp, a0, a1) = (self.perp, self.a0, self.a1);
         // t at intersection of the plane
         let t = (self.k - ray.origin[perp]) / ray.dir[perp];
         if t < T_MIN || t > T_MAX {
@@ -273,11 +275,10 @@ impl Object for Rect {
         }
 
 
-        const EPS : f64 = 0.0001;
-        let hit_0 = ray.origin[a0] + t * ray.dir[a0];
-        let hit_1 = ray.origin[a1] + t * ray.dir[a1];
+        let hit_0 = t.mul_add(ray.dir[a0], ray.origin[a0]);
+        let hit_1 = t.mul_add(ray.dir[a1], ray.origin[a1]);
 
-        if hit_0 - EPS < self.p0.0 || hit_0 + EPS > self.p0.1 || hit_1 - EPS < self.p1.0  || hit_1 + EPS > self.p1.1 {
+        if hit_0 < self.p0.0 || hit_0 > self.p0.1 || hit_1 < self.p1.0  || hit_1 > self.p1.1 {
             return None;
         }
 
@@ -296,8 +297,8 @@ impl Object for Rect {
     }
 
     fn bounding_box(&self) -> Option<AABB> {
-        let (perp, a0, a1)  = self.axis();
         let mut small = Vec3::empty();
+        let (perp, a0, a1) = (self.perp, self.a0, self.a1);
         small[perp] = self.k - 0.0001;
         small[a0] = self.p0.0 - 0.001;
         small[a1] = self.p1.0 - 0.001;
